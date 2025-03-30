@@ -2,13 +2,9 @@ from minio import Minio
 
 class MinioFileStorageService:
     def __init__(self):
-        self.minio_client = Minio(
-            "minio-server:9000",
-            access_key="minio",
-            secret_key="minio123",
-            secure=False
-        )
-        self.bucket_name = "backend-carlemany-s3-bucket"
+       self.minio_client = Minio("minio-server:9000", access_key="minio", secret_key="minio123", secure=False)
+
+       self.bucket_name = "backend-carlemany-s3-bucket"
 
     def put_file(self, local_path, remote_path):
         self.minio_client.fput_object(
