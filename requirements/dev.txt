@@ -1,0 +1,4 @@
+-r ./base.txt
+black==24.1.0
+ruff==0.1.14
+aerich==0.6.3

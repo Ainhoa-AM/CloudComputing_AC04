@@ -1,0 +1,156 @@
+version: "3.9"
+
+services:
+  carlemany-backend:
+    build:
+      context: .
+      target: carlemany-backend-dev
+    image: carlemany-backend-dev
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-server:
+        condition: service_started
+    volumes:
+      - type: bind
+        source: .
+        target: /carlemany-backend
+    ports:
+      - "8000:80"
+    networks:
+      - carlemany-net
+
+  postgres:
+    image: postgres:13.4-alpine3.14
+    environment:
+      - POSTGRES_DB=${PSQL_DB_DATABASE}
+      - POSTGRES_USER=${PSQL_DB_USERNAME}
+      - POSTGRES_PASSWORD=${PSQL_DB_PASSWORD}
+    env_file:
+      - .env
+    volumes:
+      - type: volume
+        source: carlemany-backend-data
+        target: /var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -d ${PSQL_DB_DATABASE} -U ${PSQL_DB_USERNAME}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    networks:
+      - carlemany-net
+
+  redis:
+    image: redis:6.2.6-alpine
+    env_file:
+      - .env
+    ports:
+      - "6379:6379"
+    networks:
+      - carlemany-net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio-server:
+    image: bitnami/minio:2023
+    container_name: minio-server
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=minio123
+      - MINIO_DEFAULT_BUCKETS=backend-carlemany-s3-bucket
+    networks:
+      - carlemany-net
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  make_migrations:
+    image: carlemany-backend-dev
+    env_file:
+      - .env
+    volumes:
+      - type: bind
+        source: .
+        target: /carlemany-backend
+    networks:
+      - carlemany-net
+    depends_on:
+      - postgres
+    entrypoint: aerich migrate
+
+  migrate:
+    image: carlemany-backend-dev
+    env_file:
+      - .env
+    volumes:
+      - type: bind
+        source: .
+        target: /carlemany-backend
+    networks:
+      - carlemany-net
+    depends_on:
+      - postgres
+    entrypoint: aerich upgrade
+
+  init_db:
+    image: carlemany-backend-dev
+    env_file:
+      - .env
+    volumes:
+      - type: bind
+        source: .
+        target: /carlemany-backend
+    networks:
+      - carlemany-net
+    depends_on:
+      - postgres
+    entrypoint: sh infra/init_db.sh
+
+  black:
+    image: carlemany-backend-dev:latest
+    volumes:
+      - type: bind
+        source: ./
+        target: /carlemany-backend
+        read_only: true
+    entrypoint: sh -c "black --config .black --check --diff ."
+
+  redisinsight:
+    image: redislabs/redisinsight:1.14.0
+    container_name: redisinsight
+    ports:
+      - "8002:8001"
+    networks:
+      - carlemany-net
+    volumes:
+      - redisinsight-data:/db
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8001" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  carlemany-net:
+
+volumes:
+  carlemany-backend-data:
+  redisinsight-data:
+  minio-data:
